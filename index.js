@@ -2,10 +2,19 @@ import "dotenv/config";
 import express from "express";
 import WebSocket from "ws";
 import fs from "fs";
+import mongoose from "mongoose";
+import Copypasta from "./models/Copypasta.js";
 
 const app = express();
 let ws = null;
 let reconnecting = false;
+
+mongoose.connect(process.env.MONGODB_URI)
+.then(data => console.log("Database connected"))
+.catch(err => {
+    console.error(err);
+    process.exit(1);
+});
 
 const loadTokens = () => {
     if (fs.existsSync("./tokens.json")) {
@@ -82,18 +91,19 @@ const sendMessage = (channel, text) => {
     ws.send(`PRIVMSG #${channel} :${text}`);
 }
 
-const loadCopypasta = () => {
+const loadCopypasta = async () => {
     try {
-        return fs.readFileSync("./copypasta.txt", "utf-8").trim();
+        const copypasta = await Copypasta.findOne();
+        return copypasta.text;
     } catch (err) {
         console.error("Could not read copypasta.txt:", err.message);
         return null;
     }
 }
 
-const updateCopypasta = (text) => {
+const updateCopypasta = async (text) => {
     try {
-        fs.writeFileSync("./copypasta.txt", text);
+        await Copypasta.findOneAndUpdate({}, { text });
         return true;
     }
     catch (err) {
@@ -101,24 +111,24 @@ const updateCopypasta = (text) => {
     }
 };
 
-const handleCommand = (cmd, args, username, channel, perms) => {
+const handleCommand = async (cmd, args, username, channel, perms) => {
     if (cmd === "copypasta" && !perms.isMod && !perms.isVip && !perms.isBroadcaster) {
         return;
     }
 
     switch (cmd) {
         case "copypasta": {
-            let text = loadCopypasta();
+            let text = await loadCopypasta();
 
             if (!text) return;
 
             if (args[0] === "add" && args.length > 1) {
                 text += ` ${args[1]}`;
-                const res = updateCopypasta(text);
+                const res = await updateCopypasta(text);
                 sendMessage(channel, res ? "Word added uwu <3" : "Idk what happened but it didnt work lol");
                 return;
             }
-            
+
             let remaining = text.trim();
 
             while (remaining.length > 500) {
@@ -163,7 +173,7 @@ const parseTags = (tagString) => {
     return tags;
 }
 
-const connectToTwitch = (token) => {
+const connectToTwitch = async (token) => {
     if (!token) {
         console.error("No valid token — visit the auth URL to authorize the bot first.");
         return;
@@ -185,7 +195,7 @@ const connectToTwitch = (token) => {
         ws.send(`JOIN #${process.env.TWITCH_CHANNEL.toLowerCase()}`);
     });
 
-    ws.on("message", (data) => {
+    ws.on("message", async (data) => {
         const raw = data.toString();
         const lines = raw.split("\r\n").filter(Boolean);
 
@@ -242,7 +252,7 @@ const connectToTwitch = (token) => {
             const command = parts.shift().toLowerCase();
             const args = parts;
 
-            handleCommand(command, args, username, channel, {
+            await handleCommand(command, args, username, channel, {
                 isMod,
                 isVip,
                 isBroadcaster,
@@ -264,7 +274,7 @@ const connectToTwitch = (token) => {
 
             if (newToken) {
                 reconnecting = false;
-                connectToTwitch(newToken);
+                await connectToTwitch(newToken);
             } else {
                 reconnecting = false;
                 console.error("Could not reconnect — re-authorize via /callback.");
@@ -324,7 +334,7 @@ app.get("/callback", async (req, res) => {
 
         console.log("OAuth successful.");
 
-        connectToTwitch(data.access_token);
+        await connectToTwitch(data.access_token);
 
         res.send("Authorized! Bot connecting to Twitch.");
     }
@@ -338,13 +348,13 @@ app.get("/", (req, res) => {
     res.send("Twitch bot is running");
 });
 
-app.listen(process.env.PORT || 3000, () => {
+app.listen(process.env.PORT || 3000, async () => {
     console.log("Server running");
 
     const tokens = loadTokens();
 
     if (tokens) {
-        connectToTwitch(tokens.access_token);
+        await connectToTwitch(tokens.access_token);
     }
     else {
         console.log("No tokens found — visit the auth URL to authorize.");
