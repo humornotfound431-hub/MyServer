@@ -118,21 +118,25 @@ const handleCommand = (cmd, args, username, channel, perms) => {
                 sendMessage(channel, res ? "Word added uwu <3" : "Idk what happened but it didnt work lol");
                 return;
             }
+            
+            let remaining = text.trim();
 
-            let carryStr = "";
-            for (let i = 0; i < text.length; i += 500) {
-                let subtext = carryStr + text.slice(i, i + 500);
-                const index = subtext.lastIndexOf(" ");
-                const msg = subtext.slice(0, index);
-                carryStr = subtext.slice(index).trim();
-                sendMessage(channel, msg);
+            while (remaining.length > 500) {
+                const index = remaining.lastIndexOf(" ", 500);
+
+                if (index === -1) {
+                    sendMessage(channel, remaining.slice(0, 500));
+                    remaining = remaining.slice(500);
+                    continue;
+                }
+
+                sendMessage(channel, remaining.slice(0, index));
+                remaining = remaining.slice(index + 1);
             }
 
-            if (carryStr) {
-                sendMessage(channel, carryStr);
+            if (remaining) {
+                sendMessage(channel, remaining);
             }
-
-            break;
         }
     }
 };
