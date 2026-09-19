@@ -82,13 +82,15 @@ const refreshAccessToken = async () => {
     }
 }
 
-const sendMessage = (channel, text) => {
+const sendMessage = (channel, text, replyTo = null) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         console.error("Cannot send message — WebSocket not open");
         return;
     }
 
-    ws.send(`PRIVMSG #${channel} :${text}`);
+    const replyTag = replyTo ? `@reply-parent-msg-id=${replyTo} ` : "";
+
+    ws.send(`${replyTag}PRIVMSG #${channel} :${text}`);
 }
 
 const loadCopypasta = async () => {
@@ -111,13 +113,13 @@ const updateCopypasta = async (text) => {
     }
 };
 
-const handleCommand = async (cmd, args, username, channel, perms) => {
+const handleCommand = async (cmd, args, username, channel, perms, parentMsgId) => {
     if (cmd === "copypasta" && !perms.isMod && !perms.isVip && !perms.isBroadcaster) {
         return;
     }
 
     switch (cmd) {
-        case "copypasta": {
+        case "copypasta":
             let text = await loadCopypasta();
 
             if (!text) return;
@@ -147,7 +149,17 @@ const handleCommand = async (cmd, args, username, channel, perms) => {
             if (remaining) {
                 sendMessage(channel, remaining);
             }
-        }
+            break;
+        case "sus":
+            let num;
+            let targetUser = args[0] ? (args[0].startsWith("@") ? args[0].slice(1) : args[0]) : username;
+
+            if (targetUser.toLowerCase() === "rheostatlive" || targetUser.toLowerCase() === "rheo") num = 100;
+            else num = Math.floor(Math.random() * 101);
+
+            let msg = `@${targetUser} is ${num}% sus hmmmmm...`
+            sendMessage(channel, msg, parentMsgId);
+            break;
     }
 };
 
@@ -256,7 +268,7 @@ const connectToTwitch = async (token) => {
                 isMod,
                 isVip,
                 isBroadcaster,
-            });
+            }, tags["id"]);
         }
     });
 
